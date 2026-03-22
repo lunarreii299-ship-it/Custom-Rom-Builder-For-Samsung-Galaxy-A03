@@ -34,7 +34,8 @@ jobs:
     - name: Install Dependencies
       run: |
         sudo apt update
-        sudo apt install -y zip xz-utils unzip p7zip-full wget simg2img img2simg
+        # Fix for Ubuntu 24.04: using android-sdk-libsparse-utils instead of img2simg/simg2img
+        sudo apt install -y zip xz-utils unzip p7zip-full wget android-sdk-libsparse-utils
 
     - name: Installing Tools
       run: |
@@ -51,17 +52,16 @@ jobs:
     - name: Preparing Partitions
       run: |
         cd lpbinary/binary
-        # Downloads your Binary 9 Vendor from Pixeldrain
+        # Downloads your Vendor and Product
         wget "${{ github.event.inputs.VENDOR }}" -O vendor.img
-        # Downloads your Product image from the link you provide in the box
         wget "${{ github.event.inputs.PRODUCT }}" -O product.img
-        # Creates a blank system_ext to prevent packing errors
+        # Create blank system_ext to prevent packing errors
         truncate -s 1M system_ext.img
 
     - name: Packing Super Image
       run: |
         cd lpbinary/binary
-        # Get exact file sizes for the packer
+        # Get exact file sizes for the lpmake tool
         SYS_SIZE=$(stat -c%s system.img)
         VND_SIZE=$(stat -c%s vendor.img)
         PRD_SIZE=$(stat -c%s product.img)
