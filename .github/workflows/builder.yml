@@ -10,7 +10,7 @@ on:
         GSI:
               description: ' GSI Image Direct Link '
               required: true
-              default: 'https://github.com/ponces/treble_build_aosp/releases/download/v2023.12.01/aosp-arm64-ab-gapps-14.0-20231201.img.xz'        
+              default: 'https://sourceforge.net/projects/project-elixir/files/fourteen/gsi/ProjectElixir_4.2_arm64_bgN-14.0-20240427-2318-OFFICIAL.img.xz'        
         NAME:
               description: 'Rom Name'
               required: true
@@ -18,7 +18,7 @@ on:
         VERSION:
               description: 'Baseband Version'
               required: true
-              default: 'A035FXXU4CWI1'
+              default: 'A035FXXS9CYG1'
         VENDOR:
               description: 'Enter Direct Link Of Your Version Vendor'
               required: true
@@ -56,8 +56,8 @@ jobs:
       run: |
         cd lpbinary/binary
         wget ${{ github.event.inputs.VENDOR }}
-        wget https://sourceforge.net/projects/a03-files/files/product.img
-        wget https://sourceforge.net/projects/a03-files/files/system_ext.img
+        wget https://file.kiwi/ac70fa6d#72mHqoPS395Lkn4HeCvtQQ
+        wget https://file.kiwi/ac70fa6d#72mHqoPS395Lkn4HeCvtQQ
     - name: Packing
       run: |
         cd lpbinary/binary
