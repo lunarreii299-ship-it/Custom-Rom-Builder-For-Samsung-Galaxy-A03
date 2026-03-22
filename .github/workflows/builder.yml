@@ -2,32 +2,31 @@ name: Custom Rom Builder Samsung Galaxy A03
 permissions:
   contents: write
 on:
-  push:
-    branches:
-      - main  # Change this to your desired branch
   workflow_dispatch:
     inputs:
-        GSI:
-              description: ' GSI Image Direct Link '
-              required: true
-              default: 'https://sourceforge.net/projects/project-elixir/files/fourteen/gsi/ProjectElixir_4.2_arm64_bgN-14.0-20240427-2318-OFFICIAL.img.xz'        
-        NAME:
-              description: 'Rom Name'
-              required: true
-              default: 'aosp-arm64-ab-gapps-14.0-a03.7z'
-        VERSION:
-              description: 'Baseband Version'
-              required: true
-              default: 'A035FXXS9CYG1'
-        VENDOR:
-              description: 'Enter Direct Link Of Your Version Vendor'
-              required: true
-              default: 'https://file.kiwi/ac70fa6d#72mHqoPS395Lkn4HeCvtQQ'
+      GSI:
+        description: 'GSI Image Direct Link'
+        required: true
+        default: 'https://downloads.sourceforge.net/project/project-elixir/fourteen/gsi/ProjectElixir_4.2_arm64_bgN-14.0-20240427-2318-OFFICIAL.img.xz'
+      NAME:
+        description: 'Final File Name'
+        required: true
+        default: 'project-elixir-14-arm64-smA03-A035FXXS9CYG1.7z'
+      VERSION:
+        description: 'Baseband Version'
+        required: true
+        default: 'A035FXXS9CYG1'
+      VENDOR:
+        description: 'Direct Link Of Your Vendor'
+        required: true
+        default: 'https://pixeldrain.com/api/file/rmM3YA5b'
+      PRODUCT:
+        description: 'Direct Link Of Your Product (Pixeldrain /api/file/ link)'
+        required: true
+
 jobs:
   Build:
     runs-on: ubuntu-latest
-
-    
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v2
@@ -35,50 +34,62 @@ jobs:
     - name: Install Dependencies
       run: |
         sudo apt update
-        sudo apt install -y zip xz-utils unzip p7zip-full wget
-        
+        sudo apt install -y zip xz-utils unzip p7zip-full wget simg2img img2simg
+
     - name: Installing Tools
       run: |
         git clone https://github.com/Exynos-nigg/lpunpack-lpmake-mirror.git lpbinary
-        cd lpbinary
-        bash install.sh
-    - name: Downloading Your GSI And Extracting
+        cd lpbinary && bash install.sh
+
+    - name: Downloading and Preparing GSI
       run: |
         cd lpbinary/binary
-        wget ${{ github.event.inputs.GSI }}
-        mkdir sys
-        mv *.xz sys
-        cd sys
-        unxz *.xz
-        mv *.img ../system.img
-        cd ..
-    - name: Preparing Files
+        wget "${{ github.event.inputs.GSI }}" -O gsi.img.xz
+        xz -d gsi.img.xz
+        mv *.img system.img
+
+    - name: Preparing Partitions
       run: |
         cd lpbinary/binary
-        wget ${{ github.event.inputs.VENDOR }}
-        wget https://file.kiwi/ac70fa6d#72mHqoPS395Lkn4HeCvtQQ
-        wget https://file.kiwi/ac70fa6d#72mHqoPS395Lkn4HeCvtQQ
-    - name: Packing
+        # Downloads your Binary 9 Vendor from Pixeldrain
+        wget "${{ github.event.inputs.VENDOR }}" -O vendor.img
+        # Downloads your Product image from the link you provide in the box
+        wget "${{ github.event.inputs.PRODUCT }}" -O product.img
+        # Creates a blank system_ext to prevent packing errors
+        truncate -s 1M system_ext.img
+
+    - name: Packing Super Image
       run: |
         cd lpbinary/binary
-        ./lpmake --metadata-size 65536 --super-name super --metadata-slots 2 --device super:6763315200 --group main:6761218048 --partition system:readonly:$(ls -nl system.img | awk '{print $5}'):main --image system=system.img --partition vendor:readonly:$(ls -nl vendor.img | awk '{print $5}'):main --image vendor=vendor.img --partition product:readonly:$(ls -nl product.img | awk '{print $5}'):main --image product=product.img --partition system_ext:readonly:$(ls -nl system_ext.img | awk '{print $5}'):main --image system_ext=system_ext.img --sparse --output super.img
-    - name: Creating tar and compressing to 7z
+        # Get exact file sizes for the packer
+        SYS_SIZE=$(stat -c%s system.img)
+        VND_SIZE=$(stat -c%s vendor.img)
+        PRD_SIZE=$(stat -c%s product.img)
+        EXT_SIZE=$(stat -c%s system_ext.img)
+        
+        ./lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
+          --device super:6763315200 --group main:6761218048 \
+          --partition system:readonly:$SYS_SIZE:main --image system=system.img \
+          --partition vendor:readonly:$VND_SIZE:main --image vendor=vendor.img \
+          --partition product:readonly:$PRD_SIZE:main --image product=product.img \
+          --partition system_ext:readonly:$EXT_SIZE:main --image system_ext=system_ext.img \
+          --sparse --output super.img
+
+    - name: Creating Odin Flashable Tar
       run: |
         cd lpbinary/binary
         tar -cvf super.tar super.img
-        rm -rf super.img
-        7z a ${{ github.event.inputs.NAME }} super.tar
-        rm -rf super.tar
+        7z a "${{ github.event.inputs.NAME }}" super.tar
+
     - name: Upload to Release
       uses: softprops/action-gh-release@v1
       with:
         files: lpbinary/binary/${{ github.event.inputs.NAME }}
-        name: ${{ github.event.inputs.NAME }}-${{ github.run_id }}
+        name: ${{ github.event.inputs.NAME }}
         tag_name: ${{ github.run_id }}
         body: |
-            Device: Samsung Galaxy A03
-            Version: ${{ github.event.inputs.VERSION }}
-            Rom Name: ${{ github.event.inputs.NAME }}
-            Flash: Extract the 7z file and flash through ODIN in AP Section.
+          Device: Samsung Galaxy A03
+          Binary: ${{ github.event.inputs.VERSION }}
+          Flash: Extract 7z, flash super.tar in Odin AP slot.
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
