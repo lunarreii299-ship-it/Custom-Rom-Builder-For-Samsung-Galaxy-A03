@@ -5,21 +5,21 @@ on:
   workflow_dispatch:
     inputs:
       GSI:
-        description: 'GSI Image Direct Link'
+        description: 'Google Drive GSI Link'
         required: true
-        default: 'https://downloads.sourceforge.net/project/project-elixir/fourteen/gsi/ProjectElixir_4.2_arm64_bgN-14.0-20240427-2318-OFFICIAL.img.xz'
-      NAME:
-        description: 'Final File Name'
-        required: true
-        default: 'Project-Elixir-A03-Sparse.7z'
+        default: 'https://drive.usercontent.google.com/download?id=1xDd_VD44NAuiIuaa7HUl1kt8zExQ1LKL&export=download&confirm=t'
       VENDOR:
-        description: 'Direct Link Of Your Vendor'
+        description: 'Google Drive Vendor Link'
         required: true
         default: 'https://drive.usercontent.google.com/download?id=19ogdjRTvcUifAPSjm15gb-otf1pIH5LC&export=download&confirm=t'
       PRODUCT:
-        description: 'Direct Link Of Your Product'
+        description: 'Google Drive Product Link'
         required: true
         default: 'https://drive.usercontent.google.com/download?id=13uZN1bf_MmqLveO5eeZjgbSV0PXNr-aX&export=download&confirm=t'
+      NAME:
+        description: 'Final File Name'
+        required: true
+        default: 'Project-Elixir-A03-Final.7z'
 
 jobs:
   Build:
@@ -42,22 +42,17 @@ jobs:
       run: |
         cd lpbinary/binary
         
-        # SOURCEFORGE BYPASS: Uses a fake browser identity and retries
-        wget --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36" \
-             --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 -t 10 \
-             "${{ github.event.inputs.GSI }}" -O gsi.img.xz
-        
-        xz -d gsi.img.xz
-        mv *.img system_raw.img
-        img2simg system_raw.img system.img
-        
-        # GOOGLE DRIVE DOWNLOADS
+        # DOWNLOAD GSI, VENDOR, PRODUCT
+        wget -U "Mozilla/5.0" --no-check-certificate "${{ github.event.inputs.GSI }}" -O gsi_raw.img
         wget -U "Mozilla/5.0" --no-check-certificate "${{ github.event.inputs.VENDOR }}" -O vendor_raw.img
         wget -U "Mozilla/5.0" --no-check-certificate "${{ github.event.inputs.PRODUCT }}" -O product_raw.img
         
+        # CONVERT TO SPARSE (Fixes Invalid Magic / Odin Fail)
+        img2simg gsi_raw.img system.img
         img2simg vendor_raw.img vendor.img
         img2simg product_raw.img product.img
         
+        # Blank partition fix
         truncate -s 1M ext_raw.img
         img2simg ext_raw.img system_ext.img
         rm *_raw.img
@@ -70,10 +65,10 @@ jobs:
         PRD_SIZE=$(stat -c%s product.img)
         EXT_SIZE=$(stat -c%s system_ext.img)
         
-        # 30MB buffer for metadata headers (Extra safe for Binary 9)
+        # Metadata Buffer (30MB)
         RAW_TOTAL=$((SYS_SIZE + VND_SIZE + PRD_SIZE + EXT_SIZE + 31457280))
         
-        # BLOCK SIZE MATH: Rounds up to nearest 4096
+        # THE BLOCK SIZE FIX: Rounds up to the nearest 4096 multiple
         TOTAL_SIZE=$(( (RAW_TOTAL + 4095) / 4096 * 4096 ))
         
         ./lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
