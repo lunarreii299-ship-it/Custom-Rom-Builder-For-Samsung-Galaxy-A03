@@ -19,7 +19,7 @@ on:
       NAME:
         description: 'Final File Name'
         required: true
-        default: 'Project-Elixir-A03-Final.7z'
+        default: 'Project-Elixir-A03-Fixed.7z'
 
 jobs:
   Build:
@@ -42,37 +42,37 @@ jobs:
       run: |
         cd lpbinary/binary
         
-        # DOWNLOAD GSI, VENDOR, PRODUCT
+        # Download all files from Google Drive
         wget -U "Mozilla/5.0" --no-check-certificate "${{ github.event.inputs.GSI }}" -O gsi_raw.img
         wget -U "Mozilla/5.0" --no-check-certificate "${{ github.event.inputs.VENDOR }}" -O vendor_raw.img
         wget -U "Mozilla/5.0" --no-check-certificate "${{ github.event.inputs.PRODUCT }}" -O product_raw.img
         
-        # CONVERT TO SPARSE (Fixes Invalid Magic / Odin Fail)
+        # Convert to Sparse (This fixes "Invalid Magic" and "Odin Write Fail")
         img2simg gsi_raw.img system.img
         img2simg vendor_raw.img vendor.img
         img2simg product_raw.img product.img
         
-        # Blank partition fix
+        # Create small empty system_ext to satisfy super structure
         truncate -s 1M ext_raw.img
         img2simg ext_raw.img system_ext.img
         rm *_raw.img
 
-- name: Packing Super Image
+    - name: Packing Super Image
       run: |
         cd lpbinary/binary
-        # Get EXACT byte sizes AFTER sparse conversion
+        
+        # DYNAMIC SIZE CALCULATION (Fixes Exit Code 73)
+        # We get the sizes here so lpmake knows exactly how big the sparse files are
         SYS_SIZE=$(stat -c%s system.img)
         VND_SIZE=$(stat -c%s vendor.img)
         PRD_SIZE=$(stat -c%s product.img)
         EXT_SIZE=$(stat -c%s system_ext.img)
         
-        # Log sizes for debugging
-        echo "System: $SYS_SIZE, Vendor: $VND_SIZE, Product: $PRD_SIZE"
+        # Add 35MB buffer for metadata headers (Extra safe for Binary 9)
+        RAW_TOTAL=$((SYS_SIZE + VND_SIZE + PRD_SIZE + EXT_SIZE + 36700160))
         
-        # Buffer for metadata (30MB)
-        RAW_TOTAL=$((SYS_SIZE + VND_SIZE + PRD_SIZE + EXT_SIZE + 31457280))
-        
-        # ROUND UP TO MULTIPLE OF 4096 (Fixes Exit Code 64)
+        # THE BLOCK SIZE FIX (Fixes Exit Code 64)
+        # Rounds the total super size up to the nearest multiple of 4096
         TOTAL_SIZE=$(( (RAW_TOTAL + 4095) / 4096 * 4096 ))
         
         ./lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
@@ -87,6 +87,7 @@ jobs:
       run: |
         cd lpbinary/binary
         tar -cvf super.tar super.img
+        # Clean up to save disk space for the final 7z compression
         rm super.img system.img vendor.img product.img system_ext.img
         7z a "${{ github.event.inputs.NAME }}" super.tar
 
