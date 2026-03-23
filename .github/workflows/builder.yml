@@ -57,18 +57,22 @@ jobs:
         img2simg ext_raw.img system_ext.img
         rm *_raw.img
 
-    - name: Packing Super Image
+- name: Packing Super Image
       run: |
         cd lpbinary/binary
+        # Get EXACT byte sizes AFTER sparse conversion
         SYS_SIZE=$(stat -c%s system.img)
         VND_SIZE=$(stat -c%s vendor.img)
         PRD_SIZE=$(stat -c%s product.img)
         EXT_SIZE=$(stat -c%s system_ext.img)
         
-        # Metadata Buffer (30MB)
+        # Log sizes for debugging
+        echo "System: $SYS_SIZE, Vendor: $VND_SIZE, Product: $PRD_SIZE"
+        
+        # Buffer for metadata (30MB)
         RAW_TOTAL=$((SYS_SIZE + VND_SIZE + PRD_SIZE + EXT_SIZE + 31457280))
         
-        # THE BLOCK SIZE FIX: Rounds up to the nearest 4096 multiple
+        # ROUND UP TO MULTIPLE OF 4096 (Fixes Exit Code 64)
         TOTAL_SIZE=$(( (RAW_TOTAL + 4095) / 4096 * 4096 ))
         
         ./lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
