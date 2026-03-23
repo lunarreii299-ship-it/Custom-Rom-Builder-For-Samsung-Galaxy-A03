@@ -43,6 +43,7 @@ jobs:
         wget "${{ github.event.inputs.GSI }}" -O gsi.img.xz
         xz -d gsi.img.xz
         mv *.img system_raw.img
+        # Convert to Sparse to satisfy Binary 9 security
         img2simg system_raw.img system.img
         rm system_raw.img
 
@@ -51,10 +52,10 @@ jobs:
         cd lpbinary/binary
         wget "${{ github.event.inputs.VENDOR }}" -O vendor_raw.img
         wget "${{ github.event.inputs.PRODUCT }}" -O product_raw.img
-        # Convert to Sparse format to satisfy Samsung Binary 9 bootloader
+        # Fix headers for all partitions
         img2simg vendor_raw.img vendor.img
         img2simg product_raw.img product.img
-        # Create blank system_ext and make it sparse
+        # Create empty system_ext
         truncate -s 1M ext_raw.img
         img2simg ext_raw.img system_ext.img
         rm *_raw.img
@@ -62,13 +63,13 @@ jobs:
     - name: Packing Super Image
       run: |
         cd lpbinary/binary
-        # DYNAMIC SIZE CALCULATION: This prevents the "Image greater than size" error
+        # AUTOMATIC SIZE CALCULATION
         SYS_SIZE=$(stat -c%s system.img)
         VND_SIZE=$(stat -c%s vendor.img)
         PRD_SIZE=$(stat -c%s product.img)
         EXT_SIZE=$(stat -c%s system_ext.img)
         
-        # Calculate total sum and add 15MB buffer for metadata headers
+        # Sum partitions and add 15MB buffer for metadata
         TOTAL_SIZE=$((SYS_SIZE + VND_SIZE + PRD_SIZE + EXT_SIZE + 15728640))
         
         ./lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
@@ -83,7 +84,7 @@ jobs:
       run: |
         cd lpbinary/binary
         tar -cvf super.tar super.img
-        # Clear space to ensure 7z compression succeeds
+        # DELETE UNUSED FILES TO SAVE SPACE FOR 7ZIP
         rm super.img system.img vendor.img product.img system_ext.img
         7z a "${{ github.event.inputs.NAME }}" super.tar
 
