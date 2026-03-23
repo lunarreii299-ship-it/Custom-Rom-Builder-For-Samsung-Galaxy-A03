@@ -41,21 +41,23 @@ jobs:
     - name: Downloading and Preparing Partitions
       run: |
         cd lpbinary/binary
-        # GSI Download
-        wget -U "Mozilla/5.0" "${{ github.event.inputs.GSI }}" -O gsi.img.xz
+        
+        # SOURCEFORGE BYPASS: Uses a fake browser identity and retries
+        wget --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36" \
+             --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 -t 10 \
+             "${{ github.event.inputs.GSI }}" -O gsi.img.xz
+        
         xz -d gsi.img.xz
         mv *.img system_raw.img
         img2simg system_raw.img system.img
         
-        # Vendor and Product from Google Drive (formatted for bypass)
+        # GOOGLE DRIVE DOWNLOADS
         wget -U "Mozilla/5.0" --no-check-certificate "${{ github.event.inputs.VENDOR }}" -O vendor_raw.img
         wget -U "Mozilla/5.0" --no-check-certificate "${{ github.event.inputs.PRODUCT }}" -O product_raw.img
         
-        # Convert to Sparse for Samsung Binary 9 Security
         img2simg vendor_raw.img vendor.img
         img2simg product_raw.img product.img
         
-        # Create blank system_ext
         truncate -s 1M ext_raw.img
         img2simg ext_raw.img system_ext.img
         rm *_raw.img
@@ -63,16 +65,15 @@ jobs:
     - name: Packing Super Image
       run: |
         cd lpbinary/binary
-        # Get exact partition sizes
         SYS_SIZE=$(stat -c%s system.img)
         VND_SIZE=$(stat -c%s vendor.img)
         PRD_SIZE=$(stat -c%s product.img)
         EXT_SIZE=$(stat -c%s system_ext.img)
         
-        # Buffer for metadata (25MB)
-        RAW_TOTAL=$((SYS_SIZE + VND_SIZE + PRD_SIZE + EXT_SIZE + 26214400))
+        # 30MB buffer for metadata headers (Extra safe for Binary 9)
+        RAW_TOTAL=$((SYS_SIZE + VND_SIZE + PRD_SIZE + EXT_SIZE + 31457280))
         
-        # ROUND UP TO MULTIPLE OF 4096 (Fixes Exit Code 64)
+        # BLOCK SIZE MATH: Rounds up to nearest 4096
         TOTAL_SIZE=$(( (RAW_TOTAL + 4095) / 4096 * 4096 ))
         
         ./lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
@@ -87,7 +88,6 @@ jobs:
       run: |
         cd lpbinary/binary
         tar -cvf super.tar super.img
-        # Save disk space for compression
         rm super.img system.img vendor.img product.img system_ext.img
         7z a "${{ github.event.inputs.NAME }}" super.tar
 
