@@ -63,14 +63,17 @@ jobs:
     - name: Packing Super Image
       run: |
         cd lpbinary/binary
-        # AUTOMATIC SIZE CALCULATION
+        # Calculate EXACT sizes
         SYS_SIZE=$(stat -c%s system.img)
         VND_SIZE=$(stat -c%s vendor.img)
         PRD_SIZE=$(stat -c%s product.img)
         EXT_SIZE=$(stat -c%s system_ext.img)
         
-        # Sum partitions and add 15MB buffer for metadata
-        TOTAL_SIZE=$((SYS_SIZE + VND_SIZE + PRD_SIZE + EXT_SIZE + 15728640))
+        # Calculate raw total and add 20MB for metadata
+        RAW_TOTAL=$((SYS_SIZE + VND_SIZE + PRD_SIZE + EXT_SIZE + 20971520))
+        
+        # ROUND UP TO NEAREST 4096 (The Block Size Fix)
+        TOTAL_SIZE=$(((RAW_TOTAL + 4095) / 4096 * 4096))
         
         ./lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
           --device super:$TOTAL_SIZE --group main:$TOTAL_SIZE \
