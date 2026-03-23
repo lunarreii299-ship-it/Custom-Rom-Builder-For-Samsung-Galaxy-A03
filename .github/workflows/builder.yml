@@ -15,10 +15,11 @@ on:
       VENDOR:
         description: 'Direct Link Of Your Vendor'
         required: true
-        default: 'https://pixeldrain.com/api/file/rmM3YA5b'
+        default: 'https://drive.usercontent.google.com/download?id=19ogdjRTvcUifAPSjm15gb-otf1pIH5LC&export=download&confirm=t'
       PRODUCT:
         description: 'Direct Link Of Your Product'
         required: true
+        default: 'https://drive.usercontent.google.com/download?id=13uZN1bf_MmqLveO5eeZjgbSV0PXNr-aX&export=download&confirm=t'
 
 jobs:
   Build:
@@ -37,25 +38,24 @@ jobs:
         git clone https://github.com/Exynos-nigg/lpunpack-lpmake-mirror.git lpbinary
         cd lpbinary && bash install.sh
 
-    - name: Downloading and Preparing GSI
+    - name: Downloading and Preparing Partitions
       run: |
         cd lpbinary/binary
-        wget "${{ github.event.inputs.GSI }}" -O gsi.img.xz
+        # GSI Download
+        wget -U "Mozilla/5.0" "${{ github.event.inputs.GSI }}" -O gsi.img.xz
         xz -d gsi.img.xz
         mv *.img system_raw.img
-        # Convert to Sparse to satisfy Binary 9 security
         img2simg system_raw.img system.img
-        rm system_raw.img
-
-    - name: Preparing Partitions
-      run: |
-        cd lpbinary/binary
-        wget "${{ github.event.inputs.VENDOR }}" -O vendor_raw.img
-        wget "${{ github.event.inputs.PRODUCT }}" -O product_raw.img
-        # Fix headers for all partitions
+        
+        # Vendor and Product from Google Drive (formatted for bypass)
+        wget -U "Mozilla/5.0" --no-check-certificate "${{ github.event.inputs.VENDOR }}" -O vendor_raw.img
+        wget -U "Mozilla/5.0" --no-check-certificate "${{ github.event.inputs.PRODUCT }}" -O product_raw.img
+        
+        # Convert to Sparse for Samsung Binary 9 Security
         img2simg vendor_raw.img vendor.img
         img2simg product_raw.img product.img
-        # Create empty system_ext
+        
+        # Create blank system_ext
         truncate -s 1M ext_raw.img
         img2simg ext_raw.img system_ext.img
         rm *_raw.img
@@ -63,17 +63,17 @@ jobs:
     - name: Packing Super Image
       run: |
         cd lpbinary/binary
-        # Calculate EXACT sizes
+        # Get exact partition sizes
         SYS_SIZE=$(stat -c%s system.img)
         VND_SIZE=$(stat -c%s vendor.img)
         PRD_SIZE=$(stat -c%s product.img)
         EXT_SIZE=$(stat -c%s system_ext.img)
         
-        # Calculate raw total and add 20MB for metadata
-        RAW_TOTAL=$((SYS_SIZE + VND_SIZE + PRD_SIZE + EXT_SIZE + 20971520))
+        # Buffer for metadata (25MB)
+        RAW_TOTAL=$((SYS_SIZE + VND_SIZE + PRD_SIZE + EXT_SIZE + 26214400))
         
-        # ROUND UP TO NEAREST 4096 (The Block Size Fix)
-        TOTAL_SIZE=$(((RAW_TOTAL + 4095) / 4096 * 4096))
+        # ROUND UP TO MULTIPLE OF 4096 (Fixes Exit Code 64)
+        TOTAL_SIZE=$(( (RAW_TOTAL + 4095) / 4096 * 4096 ))
         
         ./lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
           --device super:$TOTAL_SIZE --group main:$TOTAL_SIZE \
@@ -87,7 +87,7 @@ jobs:
       run: |
         cd lpbinary/binary
         tar -cvf super.tar super.img
-        # DELETE UNUSED FILES TO SAVE SPACE FOR 7ZIP
+        # Save disk space for compression
         rm super.img system.img vendor.img product.img system_ext.img
         7z a "${{ github.event.inputs.NAME }}" super.tar
 
