@@ -30,7 +30,6 @@ jobs:
     - name: Install Dependencies
       run: |
         sudo apt update
-        # Fixed for Ubuntu 24.04 'Noble'
         sudo apt install -y zip xz-utils unzip p7zip-full wget android-sdk-libsparse-utils
 
     - name: Installing Tools
@@ -44,33 +43,36 @@ jobs:
         wget "${{ github.event.inputs.GSI }}" -O gsi.img.xz
         xz -d gsi.img.xz
         mv *.img system_raw.img
-        # Convert to Sparse
         img2simg system_raw.img system.img
+        rm system_raw.img
 
     - name: Preparing Partitions
       run: |
         cd lpbinary/binary
         wget "${{ github.event.inputs.VENDOR }}" -O vendor_raw.img
         wget "${{ github.event.inputs.PRODUCT }}" -O product_raw.img
-        # Convert to Sparse format to stop "Invalid Header Magic" errors
+        # Convert to Sparse format to satisfy Samsung Binary 9 bootloader
         img2simg vendor_raw.img vendor.img
         img2simg product_raw.img product.img
         # Create blank system_ext and make it sparse
         truncate -s 1M ext_raw.img
         img2simg ext_raw.img system_ext.img
-        # Clean up raw files to save disk space
         rm *_raw.img
 
     - name: Packing Super Image
       run: |
         cd lpbinary/binary
+        # DYNAMIC SIZE CALCULATION: This prevents the "Image greater than size" error
         SYS_SIZE=$(stat -c%s system.img)
         VND_SIZE=$(stat -c%s vendor.img)
         PRD_SIZE=$(stat -c%s product.img)
         EXT_SIZE=$(stat -c%s system_ext.img)
         
+        # Calculate total sum and add 15MB buffer for metadata headers
+        TOTAL_SIZE=$((SYS_SIZE + VND_SIZE + PRD_SIZE + EXT_SIZE + 15728640))
+        
         ./lpmake --metadata-size 65536 --super-name super --metadata-slots 2 \
-          --device super:6763315200 --group main:6761218048 \
+          --device super:$TOTAL_SIZE --group main:$TOTAL_SIZE \
           --partition system:readonly:$SYS_SIZE:main --image system=system.img \
           --partition vendor:readonly:$VND_SIZE:main --image vendor=vendor.img \
           --partition product:readonly:$PRD_SIZE:main --image product=product.img \
@@ -81,7 +83,7 @@ jobs:
       run: |
         cd lpbinary/binary
         tar -cvf super.tar super.img
-        # Clear more space before heavy compression
+        # Clear space to ensure 7z compression succeeds
         rm super.img system.img vendor.img product.img system_ext.img
         7z a "${{ github.event.inputs.NAME }}" super.tar
 
